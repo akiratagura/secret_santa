@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Pinkmas Secret Santa 🎀</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;overflow:hidden;
+       background:radial-gradient(circle at 50% 20%,#ffd1e8 0%,#ff9ccb 45%,#e0218a 100%);
+       font-family:"Segoe UI",Arial,sans-serif;color:#fff;}
+  canvas{position:fixed;inset:0;pointer-events:none;}
+  .stage{position:relative;z-index:1;text-align:center;padding:24px;max-width:560px;width:100%;}
+  h1{margin:0 0 6px;font-size:clamp(28px,6vw,42px);text-shadow:0 3px 0 #b3146b;}
+  .sub{margin:0 0 28px;font-size:18px;opacity:.95}
+
+  /* gift box */
+  .gift{position:relative;width:180px;height:180px;margin:0 auto;cursor:pointer;border:0;background:none;
+        animation:bob 2.4s ease-in-out infinite;}
+  .gift:hover,.gift:focus-visible{animation:shake .6s ease-in-out infinite;outline:none;}
+  .gift .box{position:absolute;bottom:0;left:10px;right:10px;height:120px;background:#fff;border-radius:8px 8px 14px 14px;
+             box-shadow:0 10px 24px rgba(120,0,70,.35);}
+  .gift .lid{position:absolute;top:26px;left:0;right:0;height:46px;background:#fff;border-radius:10px;
+             box-shadow:0 6px 12px rgba(120,0,70,.25);transform-origin:left bottom;transition:transform .7s cubic-bezier(.3,1.6,.5,1),opacity .7s;}
+  .gift .ribbon-v{position:absolute;bottom:0;left:50%;width:34px;height:120px;margin-left:-17px;background:#e0218a;}
+  .gift .lid::after{content:"";position:absolute;left:50%;top:0;width:34px;height:100%;margin-left:-17px;background:#e0218a;}
+  .gift .bow{position:absolute;top:-6px;left:50%;margin-left:-30px;font-size:60px;line-height:1;z-index:2;
+             transition:transform .7s,opacity .7s;}
+  .gift.open{animation:none;pointer-events:none;}
+  .gift.open .lid{transform:translate(-40px,-140px) rotate(-55deg);opacity:0;}
+  .gift.open .bow{transform:translateY(-150px) rotate(25deg);opacity:0;}
+  .hint{margin-top:20px;font-size:20px;font-weight:600;animation:pulse 1.6s ease-in-out infinite;}
+
+  /* reveal card */
+  .card-wrap{perspective:900px;margin:0 auto;width:min(420px,92vw);height:0;opacity:0;transition:opacity .4s;}
+  .card-wrap.show{height:230px;opacity:1;}
+  .card{position:relative;width:100%;height:100%;transform-style:preserve-3d;transform:rotateY(180deg);
+        transition:transform 1s cubic-bezier(.2,.8,.2,1);}
+  .card.flip{transform:rotateY(0deg);}
+  .face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;border-radius:20px;
+        display:flex;flex-direction:column;align-items:center;justify-content:center;padding:18px;
+        box-shadow:0 14px 34px rgba(120,0,70,.4);}
+  .front{background:#fff;color:#e0218a;border:5px solid #e0218a;}
+  .back{background:#e0218a;transform:rotateY(180deg);font-size:60px;}
+  .front small{font-size:15px;color:#888;letter-spacing:.08em;text-transform:uppercase}
+  #name{font-size:clamp(30px,8vw,46px);font-weight:800;margin:10px 0;word-break:break-word;line-height:1.1;}
+  .front .msg{font-size:15px;color:#555;margin:6px 0 0}
+  .after{margin-top:26px;font-size:16px;opacity:0;transition:opacity 1s .8s;}
+  .after.show{opacity:1}
+  .after b{color:#fff;text-shadow:0 2px 0 #b3146b}
+
+  @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+  @keyframes shake{0%,100%{transform:rotate(0)}20%{transform:rotate(-7deg)}40%{transform:rotate(7deg)}60%{transform:rotate(-5deg)}80%{transform:rotate(5deg)}}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.55}}
+  @media (prefers-reduced-motion:reduce){
+    .gift,.hint{animation:none!important}
+    .card,.gift .lid,.gift .bow{transition:none!important}
+  }
+</style>
+</head>
+<body>
+<canvas id="fx"></canvas>
+<main class="stage">
+  <h1>🎀 Pinkmas Secret Santa 🎀</h1>
+  <p class="sub" id="intro">Santa checked his list twice…</p>
+
+  <button class="gift" id="gift" aria-label="Open your gift to reveal your Secret Santa person">
+    <span class="bow">🎀</span>
+    <span class="lid"></span>
+    <span class="box"><span class="ribbon-v"></span></span>
+  </button>
+  <div class="hint" id="hint">Tap the gift to open it! 🎁</div>
+
+  <div class="card-wrap" id="wrap" aria-live="polite">
+    <div class="card" id="card">
+      <div class="face front">
+        <small>Your mission is to spoil</small>
+        <div id="name"></div>
+        <p class="msg">Make it fabulous, thoughtful, and pink! 🩷</p>
+      </div>
+      <div class="face back">🎁</div>
+    </div>
+  </div>
+  <p class="after" id="after">🤫 Shhh… this is a secret.<br>Nobody else knows, <b>not even the organizer</b>. 🎅✨</p>
+</main>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var gift = $("gift"), hint = $("hint"), intro = $("intro");
+  var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // ---- read the name from the URL fragment ----
+  var who = "";
+  try {
+    var b64 = location.hash.slice(1).replace(/-/g, "+").replace(/_/g, "/");
+    while (b64.length % 4) b64 += "=";
+    who = new TextDecoder().decode(Uint8Array.from(atob(b64), function (c) { return c.charCodeAt(0); }));
+  } catch (e) {}
+  if (!who) {
+    intro.textContent = "Hmm, this link looks incomplete. Please use the link from your email.";
+    gift.style.display = hint.style.display = "none";
+  }
+
+  // ---- background snow / sparkles + confetti on one canvas ----
+  var cv = $("fx"), cx = cv.getContext("2d"), W, H, flakes = [], bits = [];
+  function size() { W = cv.width = innerWidth; H = cv.height = innerHeight; }
+  addEventListener("resize", size); size();
+  if (!reduce) {
+    for (var i = 0; i < 70; i++) flakes.push({x: Math.random() * W, y: Math.random() * H,
+      r: 1.5 + Math.random() * 3.5, v: .3 + Math.random() * .9, s: Math.random() * 6.28});
+  }
+  function confetti() {
+    if (reduce) return;
+    var colors = ["#ffffff", "#ff4fa3", "#ffd1e8", "#ffe14d", "#b3146b", "#8fe3ff"];
+    for (var i = 0; i < 160; i++) {
+      var a = Math.random() * Math.PI * 2, sp = 4 + Math.random() * 9;
+      bits.push({x: W / 2, y: H * .45, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 6,
+        w: 6 + Math.random() * 6, h: 4 + Math.random() * 6, rot: Math.random() * 6.28,
+        vr: (Math.random() - .5) * .4, c: colors[i % colors.length], life: 140 + Math.random() * 60});
+    }
+  }
+  (function tick() {
+    cx.clearRect(0, 0, W, H);
+    cx.fillStyle = "rgba(255,255,255,.8)";
+    flakes.forEach(function (f) {
+      f.y += f.v; f.s += .02; f.x += Math.sin(f.s) * .5;
+      if (f.y > H + 5) { f.y = -5; f.x = Math.random() * W; }
+      cx.beginPath(); cx.arc(f.x, f.y, f.r, 0, 6.28); cx.fill();
+    });
+    bits = bits.filter(function (b) { return b.life-- > 0 && b.y < H + 20; });
+    bits.forEach(function (b) {
+      b.vy += .28; b.vx *= .99; b.x += b.vx; b.y += b.vy; b.rot += b.vr;
+      cx.save(); cx.translate(b.x, b.y); cx.rotate(b.rot); cx.fillStyle = b.c;
+      cx.globalAlpha = Math.min(1, b.life / 40); cx.fillRect(-b.w / 2, -b.h / 2, b.w, b.h); cx.restore();
+    });
+    requestAnimationFrame(tick);
+  })();
+
+  // ---- open the gift ----
+  gift.addEventListener("click", function () {
+    if (!who) return;
+    gift.classList.add("open");
+    hint.style.display = "none";
+    intro.textContent = "Ta-da! ✨";
+    $("name").textContent = who;                 // textContent: never parsed as HTML
+    history.replaceState(null, "", location.pathname);   // drop the name from the address bar/history
+    confetti();
+    setTimeout(function () {
+      $("wrap").classList.add("show");
+      setTimeout(function () { $("card").classList.add("flip"); confetti(); $("after").classList.add("show"); }, reduce ? 0 : 450);
+    }, reduce ? 0 : 500);
+  });
+})();
+</script>
+</body>
+</html>
